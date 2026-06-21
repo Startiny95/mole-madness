@@ -1,0 +1,6 @@
+{
+  "name": "Mole Madness",
+  "description": "A highly competitive, customized photo-based Whack-a-Mole game with dynamic difficulty, interactive speed-ups, custom photo uploads, and persistent high scores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
