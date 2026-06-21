@@ -36,14 +36,16 @@ export const GameGrid: React.FC<GameGridProps> = ({
   const [flyingScores, setFlyingScores] = useState<FlyingScore[]>([]);
   const [activeHoleEffects, setActiveHoleEffects] = useState<{ [key: number]: 'hit' | 'penalty' | null }>({});
 
-  // Clean elements over time
+  // Clean elements over time - remove by id, not by position
   useEffect(() => {
     if (flyingScores.length === 0) return;
-    const timer = setTimeout(() => {
-      setFlyingScores((prev) => prev.slice(1));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [flyingScores]);
+    const timers = flyingScores.map((score) =>
+      setTimeout(() => {
+        setFlyingScores((prev) => prev.filter((s) => s.id !== score.id));
+      }, 1000)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [flyingScores.length]);
 
   const handleHoleClick = (index: number, e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -77,7 +79,6 @@ export const GameGrid: React.FC<GameGridProps> = ({
     }, 500);
 
     // Get click coordinates relative to the grid container to trigger flying score text
-    const rect = e.currentTarget.getBoundingClientRect();
     const parentRect = e.currentTarget.parentElement?.getBoundingClientRect();
     const x = e.clientX - (parentRect?.left || 0);
     const y = e.clientY - (parentRect?.top || 0) - 20;
@@ -124,30 +125,49 @@ export const GameGrid: React.FC<GameGridProps> = ({
               ? mole.type === 'HER'
               : mole.type === activeTarget;
 
+          const ringColor = isCurrentPositiveTarget ? '#34D399' : '#FB7185'; // emerald-400 / rose-400
+
           return (
             <div
               key={idx}
               id={`hole-${idx}`}
               onClick={(e) => handleHoleClick(idx, e)}
-              className="relative aspect-square rounded-full bg-[#4E342E] shadow-[inset_0_8px_16px_rgba(0,0,0,0.45)] border-4 border-[#3a2521] flex items-center justify-center overflow-hidden group cursor-pointer"
+              className="relative aspect-square rounded-full flex items-center justify-center overflow-visible group cursor-pointer"
             >
+              {/* Dirt pit with a raised rim for some real depth */}
+              <div
+                className="absolute inset-0 rounded-full pointer-events-none"
+                style={{
+                  background: 'radial-gradient(circle at 50% 32%, #6b4a3a 0%, #4E342E 55%, #3a2521 100%)',
+                  boxShadow: 'inset 0 10px 18px rgba(0,0,0,0.5), inset 0 -3px 0 rgba(255,255,255,0.06)',
+                  border: '4px solid #2c1c18',
+                }}
+              />
+
+              {/* Grass tufts overhanging the rim */}
+              <div className="absolute -bottom-1 left-[18%] w-[20%] h-[24%] bg-emerald-600 rounded-full rotate-[-12deg] z-20 pointer-events-none" />
+              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-[26%] h-[28%] bg-emerald-700 rounded-full z-20 pointer-events-none" />
+              <div className="absolute -bottom-1 right-[18%] w-[20%] h-[24%] bg-emerald-600 rounded-full rotate-[12deg] z-20 pointer-events-none" />
+
               {/* Mole Wrapper popping out of the pocket hole */}
               <div className="absolute inset-x-0 bottom-0 top-[12%] flex items-end justify-center overflow-hidden pointer-events-none pb-[5%] z-10">
                 {mole.active && (
                   <div
-                    className={`w-[85%] h-[85%] transition-transform duration-100 transform origin-bottom pointer-events-auto select-none ${
+                    className={`w-[85%] h-[85%] transform origin-bottom pointer-events-auto select-none transition-transform ${
                       mole.isWhacked 
-                        ? 'translate-y-1/2 scale-y-75 cursor-default' 
-                        : 'translate-y-0 scale-y-100 hover:scale-105 active:scale-95 animate-pop-up'
+                        ? 'translate-y-1/2 scale-y-75 cursor-default duration-150 ease-in' 
+                        : 'translate-y-0 scale-y-100 hover:scale-105 active:scale-95 duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] animate-pop-up'
                     }`}
                   >
                     {/* Render Image or Avatar */}
                     {hasCustomPhoto ? (
-                      <div className={`relative w-full h-full rounded-full overflow-hidden border-[5px] border-white shadow-md flex items-center justify-center ${
-                        mole.type === 'HIM' 
-                          ? 'bg-[#0284C7] shadow-[0_4px_0_#075985]' 
-                          : 'bg-[#DB2777] shadow-[0_4px_0_#9D174D]'
-                      }`}>
+                      <div 
+                        className="relative w-full h-full rounded-full overflow-hidden bg-white flex items-center justify-center"
+                        style={{
+                          border: `5px solid ${ringColor}`,
+                          boxShadow: '0 4px 0 rgba(0,0,0,0.22)',
+                        }}
+                      >
                         <img
                           src={customPhotoSrc}
                           alt={mole.type}
@@ -156,23 +176,18 @@ export const GameGrid: React.FC<GameGridProps> = ({
                             mole.isWhacked ? 'brightness-75 saturate-50' : ''
                           }`}
                         />
-                        {/* Status overlays in place of cartoon expressions */}
+                        {/* Status overlay in place of cartoon expressions */}
                         {mole.isWhacked && (
-                          <div className="absolute inset-0 bg-amber-500/30 flex items-center justify-center backdrop-blur-[1px]">
+                          <div className={`absolute inset-0 flex items-center justify-center backdrop-blur-[1px] ${
+                            isCurrentPositiveTarget ? 'bg-emerald-500/30' : 'bg-rose-500/30'
+                          }`}>
                             {isCurrentPositiveTarget ? (
-                              <Sparkles className="text-amber-100 animate-spin" size={24} />
+                              <Sparkles className="text-emerald-50 animate-spin" size={24} />
                             ) : (
-                              <AlertTriangle className="text-rose-100 animate-bounce" size={24} />
+                              <AlertTriangle className="text-rose-50 animate-bounce" size={24} />
                             )}
                           </div>
                         )}
-                        
-                        {/* Subtle target identifier corner tags */}
-                        <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold text-white uppercase shadow-sm ${
-                          isCurrentPositiveTarget ? 'bg-sky-500' : 'bg-rose-500'
-                        }`}>
-                          {isCurrentPositiveTarget ? "HIT" : "TRAP"}
-                        </div>
                       </div>
                     ) : (
                       // Render gorgeous SVG animated avatars
@@ -207,7 +222,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
         {flyingScores.map((score) => (
           <div
             key={score.id}
-            className={`absolute font-display font-black text-3xl pointer-events-none z-40 transition-all duration-700 select-none animate-bounce ${
+            className={`absolute font-display font-black text-3xl pointer-events-none z-40 select-none ${
               score.isNegative
                 ? 'text-rose-600 drop-shadow-[0_2px_4px_rgba(244,63,94,0.4)]'
                 : 'text-emerald-500 drop-shadow-[0_2px_4px_rgba(16,185,129,0.4)]'

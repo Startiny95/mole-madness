@@ -88,6 +88,18 @@ export default function App() {
   const gameIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const spawnLoopRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Live-value refs so the recursive spawn loop / endGame never read stale closures
+  const timeLeftRef = useRef(timeLeft);
+  const statsRef = useRef(stats);
+
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+  }, [timeLeft]);
+
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
+
   // Load High Scores and custom pictures on mount
   useEffect(() => {
     // High scores from localStorage
@@ -146,24 +158,6 @@ export default function App() {
           endGame();
           return 0;
         }
-
-        // Handle target alternation countdown
-        if (gameMode === 'ALTERNATING') {
-          setTargetTimeLeft((tPrev) => {
-            if (tPrev <= 1) {
-              // Alternate targets!
-              setActiveTarget((curr) => {
-                const next = curr === 'HIM' ? 'HER' : 'HIM';
-                // Play a little cute notify warning
-                playPopSound();
-                return next;
-              });
-              return TARGET_ALTERNATE_TIME;
-            }
-            return tPrev - 1;
-          });
-        }
-
         return prev - 1;
       });
     }, 1000);
@@ -175,7 +169,28 @@ export default function App() {
       if (gameIntervalRef.current) clearInterval(gameIntervalRef.current);
       if (spawnLoopRef.current) clearTimeout(spawnLoopRef.current);
     };
-  }, [gameState, gameMode, timeLeft]);
+  }, [gameState, gameMode]);
+
+  // ALTERNATING MODE TARGET SWITCH LOOP
+  // Runs as its own independent interval so it can never get tangled up
+  // with the main countdown timer's state updates.
+  useEffect(() => {
+    if (gameState !== 'PLAYING' || gameMode !== 'ALTERNATING') return;
+
+    const targetInterval = setInterval(() => {
+      setTargetTimeLeft((prev) => {
+        if (prev <= 1) {
+          // Alternate targets!
+          setActiveTarget((curr) => (curr === 'HIM' ? 'HER' : 'HIM'));
+          playPopSound();
+          return TARGET_ALTERNATE_TIME;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(targetInterval);
+  }, [gameState, gameMode]);
 
   // Handle active mole retractions
   useEffect(() => {
@@ -204,9 +219,9 @@ export default function App() {
     // Ramping difficulty calculations:
     // Under 25 seconds: normal speed. Under 15s: fast. Under 8s: crazy frenzy speed!
     let difficultyMultiplier = 1.0;
-    if (timeLeft < 10) {
+    if (timeLeftRef.current < 10) {
       difficultyMultiplier = 0.45; // frenzy!
-    } else if (timeLeft < 20) {
+    } else if (timeLeftRef.current < 20) {
       difficultyMultiplier = 0.7; // brisk
     }
 
@@ -232,7 +247,7 @@ export default function App() {
       if (emptyHoles.length === 0) return currentMoles;
 
       // Spawn 1 mole, or sometimes a double-spawn if in frenzy climax mode (timeLeft < 12 seconds)
-      const spawnCount = timeLeft < 12 && Math.random() < 0.4 ? 2 : 1;
+      const spawnCount = timeLeftRef.current < 12 && Math.random() < 0.4 ? 2 : 1;
       const spawnedIndices: number[] = [];
 
       for (let i = 0; i < spawnCount && emptyHoles.length > i; i++) {
@@ -248,9 +263,9 @@ export default function App() {
 
       // Update mole duration on spawn based on difficulty ramp
       let durationMultiplier = 1.0;
-      if (timeLeft < 10) {
+      if (timeLeftRef.current < 10) {
         durationMultiplier = 0.55; // must tap extremely quick!
-      } else if (timeLeft < 20) {
+      } else if (timeLeftRef.current < 20) {
         durationMultiplier = 0.8;
       }
 
@@ -354,12 +369,12 @@ export default function App() {
   const endGame = () => {
     setGameState('GAMEOVER');
 
-    // Check if a new high score was set
+    // Check if a new high score was set (read via ref so this isn't a stale closure)
     const currentHighScore = highScores[gameMode];
-    if (stats.score > currentHighScore) {
+    if (statsRef.current.score > currentHighScore) {
       // New high score! Saving
-      localStorage.setItem(`molemadness_highscore_${gameMode}`, stats.score.toString());
-      setHighScores((prev) => ({ ...prev, [gameMode]: stats.score }));
+      localStorage.setItem(`molemadness_highscore_${gameMode}`, statsRef.current.score.toString());
+      setHighScores((prev) => ({ ...prev, [gameMode]: statsRef.current.score }));
       setIsNewHighScoreAchieved(true);
       playFanfareSound();
     } else {
